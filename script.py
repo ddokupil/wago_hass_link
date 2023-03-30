@@ -2,6 +2,7 @@ import argparse
 import requests
 import xml.etree.ElementTree as ET
 from ftplib import FTP
+import sys
 
 response = ""
 prev_response = ""
@@ -20,16 +21,15 @@ endpoint = f"http://{args.host}/PLC/webvisu.htm"
 
 # Download the XML file from FTP
 ftp = FTP(args.host)
-ftp.login(args.user, args.password)
-
 try:
+    ftp.login(args.user, args.password)
     with open('plc_visu.xml', 'wb') as f:
         ftp.retrbinary('RETR ' + args.file, f.write)
     ftp.quit()
-    print("File downloaded from FTP successfully")
 except Exception as e:
     print("Failed to download file from FTP:", e)
     ftp.quit()
+    sys.exit()
 
 # Parse XML file
 tree = ET.parse('plc_visu.xml')  # Use the downloaded file instead of the argument
@@ -57,10 +57,13 @@ for name, value in variables.items():
 # Do it once to initialize the previous response
 prev_response = requests.post(endpoint, data=payload)
 
-while True:
-    # Make the request
-    response = requests.post(endpoint, data=payload)
-    # Check if the response is different from the previous one
-    if response.content != prev_response.content:
-        print("Raw response: ", response.content)
-        prev_response = response
+try:
+    while True:
+        # Make the request
+        response = requests.post(endpoint, data=payload)
+        # Check if the response is different from the previous one
+        if response.content != prev_response.content:
+            print("Raw response: ", response.content)
+            prev_response = response
+except KeyboardInterrupt:
+    sys.exit()
