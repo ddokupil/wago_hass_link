@@ -1,16 +1,38 @@
 import argparse
 import requests
 import xml.etree.ElementTree as ET
+from ftplib import FTP
 
-url = 'http://192.168.1.2/PLC/webvisu.htm'
 response = ""
 prev_response = ""
 parser = argparse.ArgumentParser()
-parser.add_argument('xml_file', help='path to the XML file')
+
+# Remove the argument for the XML file path
+
+# Define arguments for FTP download
+parser.add_argument('--host', help='Wago address', default='192.168.1.2')
+parser.add_argument('--user', help='FTP server username', default='user')
+parser.add_argument('--password', help='FTP server password', default='user')
+parser.add_argument('--file', help='File path on FTP server', default='/PLC/plc_visu.xml')
 args = parser.parse_args()
 
+endpoint = f"http://{args.host}/PLC/webvisu.htm"
+
+# Download the XML file from FTP
+ftp = FTP(args.host)
+ftp.login(args.user, args.password)
+
+try:
+    with open('plc_visu.xml', 'wb') as f:
+        ftp.retrbinary('RETR ' + args.file, f.write)
+    ftp.quit()
+    print("File downloaded from FTP successfully")
+except Exception as e:
+    print("Failed to download file from FTP:", e)
+    ftp.quit()
+
 # Parse XML file
-tree = ET.parse(args.xml_file)
+tree = ET.parse('plc_visu.xml')  # Use the downloaded file instead of the argument
 root = tree.getroot()
 
 # Initialize variables dictionary
@@ -33,13 +55,12 @@ for name, value in variables.items():
     counter += int(num_bytes)
 
 # Do it once to initialize the previous response
-prev_response = requests.post(url, data=payload)
+prev_response = requests.post(endpoint, data=payload)
 
 while True:
     # Make the request
-    response = requests.post(url, data=payload)
+    response = requests.post(endpoint, data=payload)
     # Check if the response is different from the previous one
     if response.content != prev_response.content:
         print("Raw response: ", response.content)
         prev_response = response
-
