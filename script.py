@@ -1,14 +1,16 @@
+#!/usr/bin/python3
+
 import argparse
 import requests
 import xml.etree.ElementTree as ET
 from ftplib import FTP
 import sys
+from io import BytesIO
+from collections import OrderedDict
 
 response = ""
 prev_response = ""
 parser = argparse.ArgumentParser()
-
-# Remove the argument for the XML file path
 
 # Define arguments for FTP download
 parser.add_argument('--host', help='Wago address', default='192.168.1.2')
@@ -19,24 +21,25 @@ args = parser.parse_args()
 
 endpoint = f"http://{args.host}/PLC/webvisu.htm"
 
-# Download the XML file from FTP
+# Fetch the XML file from FTP
 ftp = FTP(args.host)
 try:
     ftp.login(args.user, args.password)
-    with open('plc_visu.xml', 'wb') as f:
-        ftp.retrbinary('RETR ' + args.file, f.write)
+    with BytesIO() as file_bytes:
+        ftp.retrbinary('RETR ' + args.file, file_bytes.write)
+        file_content = file_bytes.getvalue()
+
     ftp.quit()
 except Exception as e:
     print("Failed to download file from FTP:", e)
     ftp.quit()
-    sys.exit()
 
 # Parse XML file
-tree = ET.parse('plc_visu.xml')  # Use the downloaded file instead of the argument
+tree = ET.ElementTree(ET.fromstring(file_content.decode('latin-1')))
 root = tree.getroot()
 
 # Initialize variables dictionary
-variables = {}
+variables = OrderedDict()
 
 # Parse variables from XML
 for variable in root.findall('variablelist/variable'):
@@ -44,26 +47,39 @@ for variable in root.findall('variablelist/variable'):
     value = variable.text.strip()
     variables[name] = value
 
-# Define the protocol
+# Print out the variables as they are in xml file
+for i in range(len(variables)):
+    key, value = list(variables.items())[i]
+    print(f"{key} is {value}")
+
+# Define the payload header
 payload = f"|0|{len(variables)}|"
 
-# Iterate over the variables and add them to the protocol
+# Iterate over the variables and add them to the payload
 counter = 0
 for name, value in variables.items():
     address_h, address_l, num_bytes, var_type = value.split(',')
     payload += f"{counter}|{address_h}|{address_l}|{num_bytes}|{var_type}|"
     counter += int(num_bytes)
 
-# Do it once to initialize the previous response
+# Do for the first time to initialize the previous response
 prev_response = requests.post(endpoint, data=payload)
 
+# And now do it in an endless loop
 try:
     while True:
         # Make the request
         response = requests.post(endpoint, data=payload)
         # Check if the response is different from the previous one
         if response.content != prev_response.content:
-            print("Raw response: ", response.content)
+            prev_values = [int(value) for value in prev_response.content.decode().split("|")[1:-1]]
+            values = [int(value) for value in response.content.decode().split("|")[1:-1]]
+            # Check which variables have changed and print their names and new values
+            for i, value in enumerate(values):
+                if value != prev_values[i]:
+                    name = list(variables.keys())[i]
+                    print(f"{name} changed to {value}")
+                    prev_values[i] = value
             prev_response = response
 except KeyboardInterrupt:
     sys.exit()
