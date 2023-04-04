@@ -1,0 +1,12 @@
+[Unit]
+Description=Wago to mqtt link
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python /opt/wago_mqtt/wago_mqtt.py -s
+WorkingDirectory=/opt
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
