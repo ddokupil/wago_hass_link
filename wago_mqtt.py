@@ -107,34 +107,7 @@ for name, value in variables.items():
     payload += f"{counter}|{address_h}|{address_l}|{num_bytes}|{var_type}|"
     counter += int(num_bytes)
 
-# Do for the first time to initialize the previous response
-first_run = True;
-iteration = 0;
-# try:
-#     prev_response = requests.post(endpoint, data=payload)
-# except Exception as e:
-#     logger.critical(f"Can't even make the first request: {e}\nTerminating\n")
-#     if args.service >= 1:
-#         logger.debug(f"Will retry from scratch in a minute.")
-#         time.sleep(60)
-#     sys.exit()
-
-# prev_values = [int(value) for value in prev_response.content.decode().split("|")[1:-1]]
-# changes = {}
-# for i, value in enumerate(prev_values):
-#     name = list(variables.keys())[i]
-#     changes[name] = value
-# json_payload = json.dumps(changes)
-
-# logger.debug(f"Payload: \n{json_payload}")
-# try:
-#     publish.single(MQTT_TOPIC, payload=json_payload, qos=0, retain=False, hostname=MQTT_SERVER, auth={'username':MQTT_USERNAME, 'password':MQTT_PASSWORD})
-# except Exception as e:    
-#     logger.error(f"Error publishing to MQTT: {e}")
-#     if args.service >= 1:
-#         logger.debug(f"Will retry from scratch in a minute.")
-#         time.sleep(60)
-#     sys.exit()
+iteration = 0
 
 # And now do it in an endless loop
 try:
@@ -149,16 +122,18 @@ try:
                 logger.debug(f"Will retry from scratch in a minute.")
                 time.sleep(60)
             sys.exit()
+        # For the first time let's say prev_response is the same as response
         if iteration == 0:
             prev_response = response
-        if (response.content != prev_response.content) | iteration == 0:
-            if first_run:
-                prev_values = [int(value) for value in prev_response.content.decode().split("|")[1:-1]]
+        # parse everything if ran for the first time or got different response
+        if response.content != prev_response.content or iteration == 0:
+            prev_values = [int(value) for value in prev_response.content.decode().split("|")[1:-1]]
             values = [int(value) for value in response.content.decode().split("|")[1:-1]]
             # Check which variables have changed and create a dictionary with their names and new values
             changes = {}
             for i, value in enumerate(values):
-                if (value != prev_values[i]) | first_run:
+                # For the first time do it all
+                if value != prev_values[i] or iteration == 0:
                     # if value == 1:
                     #     value = "on"
                     # else: value = "off"
@@ -178,6 +153,7 @@ try:
                     time.sleep(60)
                 sys.exit()
             prev_response = response
+        # If hit 10000 iterations reset the counter, if not increment
         if iteration == 10000:
             iteration = 0
         else: iteration = iteration + 1
