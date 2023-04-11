@@ -9,6 +9,7 @@ from io import BytesIO
 from collections import OrderedDict
 import json
 import paho.mqtt.publish as publish
+import paho.mqtt.client as client
 import logging
 import logging.handlers
 import time
@@ -36,6 +37,8 @@ response = ""
 prev_response = ""
 parser = argparse.ArgumentParser()
 
+iteration = 0
+
 # Define arguments for FTP download
 parser.add_argument('-H', '--host', help='Wago address', default='192.168.1.2')
 parser.add_argument('-u', '--user', help='FTP server username', default='user')
@@ -59,7 +62,28 @@ endpoint = f"http://{args.host}/PLC/webvisu.htm"
 MQTT_SERVER = "192.168.1.4"
 MQTT_USERNAME = "user"
 MQTT_PASSWORD = "passwd"
-MQTT_TOPIC = "wago/bridge"
+MQTT_PORT = 1883
+MQTT_PUBL = "wago/bridge"
+MQTT_SUBS = 'homeassistant/status'
+
+def on_connect(client, userdata, flags, rc):
+    logger.debug(f"Connected with result code {rc}")
+    client.subscribe(MQTT_SUBS)
+
+def on_message(client, userdata, msg):
+    if msg.payload.decode() == 'online':
+        global iteration 
+        iteration = 0
+        logger.debug(f"Home Assistant has started via MQTT!")
+
+mqtt_client = client.Client()
+mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+mqtt_client.on_connect = on_connect
+mqtt_client.on_message = on_message
+
+mqtt_client.connect(MQTT_SERVER, MQTT_PORT)
+
+mqtt_client.loop_start()
 
 # Fetch the XML file from FTP
 ftp = FTP(args.host)
@@ -107,8 +131,6 @@ for name, value in variables.items():
     payload += f"{counter}|{address_h}|{address_l}|{num_bytes}|{var_type}|"
     counter += int(num_bytes)
 
-iteration = 0
-
 # And now do it in an endless loop
 try:
     while True:
@@ -145,7 +167,7 @@ try:
             # Publish the JSON payload to the MQTT server
             logger.debug(f"Payload: \n{json_payload}")
             try:
-                publish.single(MQTT_TOPIC, payload=json_payload, qos=0, retain=False, hostname=MQTT_SERVER, auth={'username':MQTT_USERNAME, 'password':MQTT_PASSWORD})
+                publish.single(MQTT_PUBL, payload=json_payload, qos=0, retain=False, hostname=MQTT_SERVER, auth={'username':MQTT_USERNAME, 'password':MQTT_PASSWORD})
             except Exception as e:    
                 logger.error(f"Error publishing to MQTT: {e}")
                 if args.service >= 1:
